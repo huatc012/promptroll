@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0A0A0C">
+  <title>PromptRoll — 提词器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :root {
+      --bg-primary: #0A0A0C;
+      --bg-surface: #141416;
+      --bg-glass: rgba(20, 20, 22, 0.92);
+      --text-primary: #F5F5F7;
+      --text-secondary: #8E8E93;
+      --text-dim: #48484A;
+      --accent: #E8A445;
+      --accent-glow: rgba(232, 164, 69, 0.25);
+      --accent-dim: rgba(232, 164, 69, 0.15);
+      --border: rgba(255, 255, 255, 0.08);
+      --danger: #FF453A;
+      --safe-top: env(safe-area-inset-top, 20px);
+      --safe-bottom: env(safe-area-inset-bottom, 20px);
+      
+      --font-size: 48px;
+      --line-height: 1.8;
+      --scroll-speed: 60;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      padding-top: var(--safe-top);
+      padding-bottom: var(--safe-bottom);
+    }
+
+    /* ═══════════════════════════════════════════
+       TELEPROMPTER AREA
+    ═══════════════════════════════════════════ */
+    .teleprompter {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: var(--bg-primary);
+    }
+
+    .teleprompter.mirrored .script-content {
+      transform: scaleX(-1);
+    }
+
+    .read-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 40%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent-glow) 20%, var(--accent) 50%, var(--accent-glow) 80%, transparent);
+      pointer-events: none;
+      z-index: 5;
+      opacity: 0.7;
+    }
+
+    .read-line::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 40px;
+      height: 40px;
+      background: radial-gradient(circle, var(--accent-glow), transparent 70%);
+      border-radius: 50%;
+    }
+
+    .script-viewport {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    .script-content {
+      position: absolute;
+      width: 100%;
+      padding: 35vh 24px 65vh;
+      font-size: var(--font-size);
+      line-height: var(--line-height);
+      font-weight: 600;
+      color: var(--text-primary);
+      text-align: center;
+      transform: translateY(0);
+      will-change: transform;
+      transition: transform 0.05s linear;
+    }
+
+    .script-content.mirrored {
+      transform: scaleX(-1) translateY(0);
+    }
+
+    .script-line {
+      margin-bottom: 0.5em;
+    }
+
+    /* ═══════════════════════════════════════════
+       CONTROL PANEL
+    ═══════════════════════════════════════════ */
+    .control-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg-glass);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-top: 1px solid var(--border);
+      padding: 16px 20px calc(var(--safe-bottom) + 16px);
+      z-index: 100;
+      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s ease;
+    }
+
+    .control-panel.hidden {
+      transform: translateY(100%);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* Main Controls Row */
+    .controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      border-radius: 16px;
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s ease, background 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .btn:active {
+      transform: scale(0.94);
+    }
+
+    .btn-primary {
+      width: 72px;
+      height: 72px;
+      background: var(--accent);
+      color: #000;
+      font-size: 28px;
+      border-radius: 50%;
+      box-shadow: 0 4px 24px var(--accent-glow);
+    }
+
+    .btn-primary:hover {
+      background: #F0B04F;
+    }
+
+    .btn-secondary {
+      width: 56px;
+      height: 56px;
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      font-size: 22px;
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: #1C1C1E;
+    }
+
+    .btn-secondary.active {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .btn-edit {
+      width: 48px;
+      height: 48px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 20px;
+    }
+
+    .btn-edit:hover {
+      color: var(--text-primary);
+    }
+
+    /* Settings Row */
+    .settings-row {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .setting-group {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .setting-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .setting-value {
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      background: var(--bg-surface);
+      border-radius: 2px;
+      outline: none;
+    }
+
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 2px 8px var(--accent-glow);
+    }
+
+    .slider::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+    }
+
+    /* Toggle Switch */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .toggle-icon {
+      font-size: 18px;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 26px;
+      background: var(--bg-surface);
+      border-radius: 13px;
+      cursor: pointer;
+      transition: background 0.25s ease;
+      border: 1px solid var(--border);
+    }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      background: var(--text-secondary);
+      border-radius: 50%;
+      transition: transform 0.25s ease, background 0.25s ease;
+    }
+
+    .toggle-switch.active {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+    }
+
+    .toggle-switch.active::after {
+      transform: translateX(18px);
+      background: var(--accent);
+    }
+
+    /* Speed Indicator */
+    .speed-indicator {
+      position: fixed;
+      top: calc(var(--safe-top) + 16px);
+      right: 20px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      border: 1px solid var(--border);
+      z-index: 50;
+      opacity: 0;
+      transform: translateY(-8px);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
+    .speed-indicator.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ═══════════════════════════════════════════
+       MODAL
+    ═══════════════════════════════════════════ */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 200;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal {
+      width: 100%;
+      max-height: 85vh;
+      background: var(--bg-surface);
+      border-radius: 24px 24px 0 0;
+      padding: 24px 20px calc(var(--safe-bottom) + 24px);
+      transform: translateY(100%);
+      transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .modal-overlay.active .modal {
+      transform: translateY(0);
+    }
+
+    .modal-handle {
+      width: 36px;
+      height: 4px;
+      background: var(--text-dim);
+      border-radius: 2px;
+      margin: 0 auto 20px;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    .modal-textarea {
+      flex: 1;
+      width: 100%;
+      min-height: 200px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      font-family: inherit;
+      font-size: 16px;
+      line-height: 1.7;
+      color: var(--text-primary);
+      resize: none;
+      outline: none;
+    }
+
+    .modal-textarea:focus {
+      border-color: var(--accent);
+    }
+
+    .modal-textarea::placeholder {
+      color: var(--text-dim);
+    }
+
+    .modal-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 16px;
+      gap: 12px;
+    }
+
+    .char-count {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .btn-done {
+      padding: 12px 32px;
+      background: var(--accent);
+      color: #000;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 24px;
+    }
+
+    .btn-cancel {
+      padding: 12px 24px;
+      background: var(--bg-primary);
+      color: var(--text-secondary);
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 24px;
+      border: 1px solid var(--border);
+    }
+
+    /* ═══════════════════════════════════════════
+       WELCOME STATE
+    ═══════════════════════════════════════════ */
+    .welcome-state {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      z-index: 10;
+      background: var(--bg-primary);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+
+    .welcome-state.hidden {
+      opacity: 0;
+      transform: scale(0.95);
+      pointer-events: none;
+    }
+
+    .welcome-icon {
+      font-size: 64px;
+      margin-bottom: 24px;
+      opacity: 0.9;
+    }
+
+    .welcome-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, var(--text-primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .welcome-subtitle {
+      font-size: 15px;
+      color: var(--text-secondary);
+      margin-bottom: 48px;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .welcome-btn {
+      padding: 18px 48px;
+      background: var(--accent);
+      color: #000;
+      font-size: 17px;
+      font-weight: 700;
+      border-radius: 30px;
+      box-shadow: 0 8px 32px var(--accent-glow);
+    }
+
+    .welcome-hint {
+      margin-top: 32px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    /* ═══════════════════════════════════════════
+       PROGRESS BAR
+    ═══════════════════════════════════════════ */
+    .progress-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 3px;
+      background: var(--accent);
+      z-index: 200;
+      transition: width 0.1s linear;
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+
+    /* ═══════════════════════════════════════════
+       GESTURE HINT
+    ═══════════════════════════════════════════ */
+    .gesture-hint {
+      position: fixed;
+      bottom: 50%;
+      width: 60px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      color: var(--accent);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .gesture-hint.left { left: 12px; }
+    .gesture-hint.right { right: 12px; }
+    .gesture-hint.visible { opacity: 0.8; }
+
+    /* ═══════════════════════════════════════════
+       DARK MODE SCROLLBAR
+    ═══════════════════════════════════════════ */
+    ::-webkit-scrollbar { display: none; }
+    
+    /* Selection color */
+    ::selection {
+      background: var(--accent);
+      color: #000;
+    }
+  </style>
+</head>
+<body>
+  <!-- Progress Bar -->
+  <div class="progress-bar" id="progressBar"></div>
+
+  <!-- Speed Indicator -->
+  <div class="speed-indicator" id="speedIndicator">60 px/s</div>
+
+  <!-- Gesture Hints -->
+  <div class="gesture-hint left" id="hintLeft">−10</div>
+  <div class="gesture-hint right" id="hintRight">+10</div>
+
+  <!-- Welcome State -->
+  <div class="welcome-state" id="welcomeState">
+    <div class="welcome-icon">📜</div>
+    <div class="welcome-title">PromptRoll</div>
+    <div class="welcome-subtitle">
+      专业提词器<br>
+      让你的镜头表现更从容
+    </div>
+    <button class="welcome-btn btn" id="startBtn">开始提词</button>
+    <div class="welcome-hint">粘贴文案 · 调整参数 · 开始录制</div>
+  </div>
+
+  <!-- Teleprompter -->
+  <div class="teleprompter" id="teleprompter">
+    <div class="read-line"></div>
+    <div class="script-viewport">
+      <div class="script-content" id="scriptContent">
+        <div class="script-line">准备就绪</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Control Panel -->
+  <div class="control-panel hidden" id="controlPanel">
+    <!-- Controls Row -->
+    <div class="controls-row">
+      <button class="btn btn-secondary" id="editBtn" title="编辑文案">✏️</button>
+      <button class="btn btn-secondary" id="resetBtn" title="重置">⏹️</button>
+      <button class="btn btn-primary" id="playBtn" title="播放/暂停">▶️</button>
+      <button class="btn btn-secondary" id="mirrorBtn" title="镜像模式">👁️</button>
+      <button class="btn btn-secondary" id="sizeBtn" title="字号">Aa</button>
+    </div>
+
+    <!-- Settings Row -->
+    <div class="settings-row">
+      <div class="setting-group" style="max-width: 140px;">
+        <div class="setting-label">
+          <span>速度</span>
+          <span class="setting-value" id="speedValue">60</span>
+        </div>
+        <input type="range" class="slider" id="speedSlider" min="20" max="200" value="60" step="5">
+      </div>
+
+      <div class="setting-group" style="flex: 1;">
+        <div class="setting-label">
+          <span>字号</span>
+          <span class="setting-value" id="sizeValue">48</span>
+        </div>
+        <input type="range" class="slider" id="sizeSlider" min="28" max="96" value="48" step="2">
+      </div>
+
+      <div class="toggle-row">
+        <span class="toggle-icon">🪞</span>
+        <div class="toggle-switch" id="mirrorToggle"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Script Input Modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <div class="modal-title">输入台词</div>
+      <textarea 
+        class="modal-textarea" 
+        id="scriptInput" 
+        placeholder="在这里粘贴或输入你的台词...
+        
+支持从剪映、CapCut、备忘录等应用复制粘贴。"
+        autofocus
+      ></textarea>
+      <div class="modal-footer">
+        <span class="char-count" id="charCount">0 字</span>
+        <div>
+          <button class="btn btn-cancel" id="cancelBtn">取消</button>
+          <button class="btn btn-done" id="doneBtn">确认</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ═══════════════════════════════════════════
+    // STATE
+    // ═══════════════════════════════════════════
+    const state = {
+      isPlaying: false,
+      isMirrored: false,
+      script: '',
+      speed: 60,
+      fontSize: 48,
+      scrollY: 0,
+      lastTimestamp: null,
+      hasScript: false
+    };
+
+    // Load from localStorage
+    const saved = localStorage.getItem('promptroll_state');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        Object.assign(state, parsed);
+        if (state.hasScript && state.script) {
+          document.getElementById('scriptContent').innerHTML = 
+            state.script.split('\n').map(line => 
+              `<div class="script-line">${line || '&nbsp;'}</div>`
+            ).join('');
+          document.getElementById('welcomeState').classList.add('hidden');
+          document.getElementById('controlPanel').classList.remove('hidden');
+        }
+      } catch (e) {}
+    }
+
+    // ═══════════════════════════════════════════
+    // DOM ELEMENTS
+    // ═══════════════════════════════════════════
+    const $ = id => document.getElementById(id);
+    const teleprompter = $('teleprompter');
+    const scriptContent = $('scriptContent');
+    const controlPanel = $('controlPanel');
+    const playBtn = $('playBtn');
+    const resetBtn = $('resetBtn');
+    const mirrorBtn = $('mirrorBtn');
+    const editBtn = $('editBtn');
+    const sizeBtn = $('sizeBtn');
+    const speedSlider = $('speedSlider');
+    const sizeSlider = $('sizeSlider');
+    const mirrorToggle = $('mirrorToggle');
+    const speedValue = $('speedValue');
+    const sizeValue = $('sizeValue');
+    const speedIndicator = $('speedIndicator');
+    const progressBar = $('progressBar');
+    const modalOverlay = $('modalOverlay');
+    const scriptInput = $('scriptInput');
+    const charCount = $('charCount');
+    const doneBtn = $('doneBtn');
+    const cancelBtn = $('cancelBtn');
+    const startBtn = $('startBtn');
+    const welcomeState = $('welcomeState');
+    const hintLeft = $('hintLeft');
+    const hintRight = $('hintRight');
+
+    // ═══════════════════════════════════════════
+    // UTILITIES
+    // ═══════════════════════════════════════════
+    function saveState() {
+      localStorage.setItem('promptroll_state', JSON.stringify(state));
+    }
+
+    function updateSpeedUI() {
+      speedSlider.value = state.speed;
+      speedValue.textContent = state.speed;
+      document.documentElement.style.setProperty('--scroll-speed', state.speed);
+    }
+
+    function updateSizeUI() {
+      sizeSlider.value = state.fontSize;
+      sizeValue.textContent = state.fontSize;
+      document.documentElement.style.setProperty('--font-size', state.fontSize + 'px');
+    }
+
+    function updateMirrorUI() {
+      if (state.isMirrored) {
+        teleprompter.classList.add('mirrored');
+        scriptContent.classList.add('mirrored');
+        mirrorBtn.classList.add('active');
+        mirrorToggle.classList.add('active');
+      } else {
+        teleprompter.classList.remove('mirrored');
+        scriptContent.classList.remove('mirrored');
+        mirrorBtn.classList.remove('active');
+        mirrorToggle.classList.remove('active');
+      }
+    }
+
+    function showSpeedIndicator() {
+      speedIndicator.textContent = `${state.speed} px/s`;
+      speedIndicator.classList.add('visible');
+      clearTimeout(speedIndicator._timeout);
+      speedIndicator._timeout = setTimeout(() => {
+        speedIndicator.classList.remove('visible');
+      }, 1500);
+    }
+
+    function showPanel() {
+      controlPanel.classList.remove('hidden');
+    }
+
+    function hidePanel() {
+      if (state.isPlaying) {
+        controlPanel.classList.add('hidden');
+      }
+    }
+
+    function togglePanel() {
+      if (controlPanel.classList.contains('hidden')) {
+        showPanel();
+      } else {
+        hidePanel();
+      }
+    }
+
+    function updateProgress() {
+      const content = scriptContent;
+      const maxScroll = content.scrollHeight - window.innerHeight;
+      if (maxScroll <= 0) {
+        progressBar.style.width = '100%';
+        return;
+      }
+      const progress = Math.min(100, (state.scrollY / maxScroll) * 100);
+      progressBar.style.width = progress + '%';
+    }
+
+    // ═══════════════════════════════════════════
+    // PLAYBACK
+    // ═══════════════════════════════════════════
+    function play() {
+      if (!state.hasScript || !state.script) return;
+      state.isPlaying = true;
+      playBtn.textContent = '⏸️';
+      state.lastTimestamp = null;
+      requestAnimationFrame(tick);
+      showSpeedIndicator();
+      // Auto-hide panel after 2s
+      clearTimeout(state._hideTimeout);
+      state._hideTimeout = setTimeout(hidePanel, 2000);
+    }
+
+    function pause() {
+      state.isPlaying = false;
+      playBtn.textContent = '▶️';
+      showPanel();
+    }
+
+    function togglePlay() {
+      if (!state.hasScript) {
+        openModal();
+        return;
+      }
+      if (state.isPlaying) {
+        pause();
+      } else {
+        play();
+      }
+    }
+
+    function reset() {
+      pause();
+      state.scrollY = 0;
+      scriptContent.style.transform = 'translateY(0)';
+      updateProgress();
+    }
+
+    function tick(timestamp) {
+      if (!state.isPlaying) return;
+
+      if (state.lastTimestamp === null) {
+        state.lastTimestamp = timestamp;
+      }
+
+      const delta = timestamp - state.lastTimestamp;
+      state.lastTimestamp = timestamp;
+
+      // Calculate scroll: speed is px/second
+      const scrollAmount = (state.speed * delta) / 1000;
+      state.scrollY += scrollAmount;
+
+      // Check if reached end
+      const maxScroll = scriptContent.scrollHeight - window.innerHeight;
+      if (state.scrollY >= maxScroll) {
+        state.scrollY = maxScroll;
+        pause();
+      }
+
+      scriptContent.style.transform = `translateY(${-state.scrollY}px)`;
+      updateProgress();
+
+      if (state.isPlaying) {
+        requestAnimationFrame(tick);
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // MODAL
+    // ═══════════════════════════════════════════
+    function openModal() {
+      scriptInput.value = state.script || '';
+      updateCharCount();
+      modalOverlay.classList.add('active');
+      scriptInput.focus();
+    }
+
+    function closeModal() {
+      modalOverlay.classList.remove('active');
+    }
+
+    function updateCharCount() {
+      const len = scriptInput.value.trim().length;
+      const lines = scriptInput.value ? scriptInput.value.split('\n').length : 0;
+      charCount.textContent = `${len} 字 / ${lines} 行`;
+    }
+
+    function applyScript() {
+      const text = scriptInput.value.trim();
+      if (!text) return;
+
+      state.script = text;
+      state.hasScript = true;
+      state.scrollY = 0;
+
+      scriptContent.innerHTML = text.split('\n').map(line => 
+        `<div class="script-line">${escapeHtml(line) || '&nbsp;'}</div>`
+      ).join('');
+
+      scriptContent.style.transform = 'translateY(0)';
+      updateProgress();
+      saveState();
+      closeModal();
+
+      // Show control panel after adding script
+      showPanel();
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, '&amp;')
+                 .replace(/</g, '&lt;')
+                 .replace(/>/g, '&gt;')
+                 .replace(/"/g, '&quot;');
+    }
+
+    // ═══════════════════════════════════════════
+    // GESTURES
+    // ═══════════════════════════════════════════
+    let lastTap = 0;
+    let lastTapX = 0;
+    let tapTimeout = null;
+
+    teleprompter.addEventListener('click', (e) => {
+      // Don't trigger if clicking control panel
+      if (e.target.closest('.control-panel')) return;
+
+      const now = Date.now();
+      const x = e.clientX;
+      const screenWidth = window.innerWidth;
+      const isLeftSide = x < screenWidth * 0.25;
+      const isRightSide = x > screenWidth * 0.75;
+
+      // Double tap detection
+      if (now - lastTap < 300) {
+        // Double tap - toggle play
+        togglePlay();
+      } else if (isLeftSide) {
+        // Left side - decrease speed
+        state.speed = Math.max(20, state.speed - 10);
+        updateSpeedUI();
+        saveState();
+        showSpeedIndicator();
+        hintLeft.classList.add('visible');
+        setTimeout(() => hintLeft.classList.remove('visible'), 400);
+      } else if (isRightSide) {
+        // Right side - increase speed
+        state.speed = Math.min(200, state.speed + 10);
+        updateSpeedUI();
+        saveState();
+        showSpeedIndicator();
+        hintRight.classList.add('visible');
+        setTimeout(() => hintRight.classList.remove('visible'), 400);
+      } else {
+        // Center tap - toggle panel
+        togglePanel();
+      }
+
+      lastTap = now;
+      lastTapX = x;
+    });
+
+    // Long press at bottom to show panel
+    let longPressTimer = null;
+    teleprompter.addEventListener('touchstart', (e) => {
+      const y = e.touches[0].clientY;
+      if (y > window.innerHeight * 0.7) {
+        longPressTimer = setTimeout(() => {
+          showPanel();
+        }, 500);
+      }
+    }, { passive: true });
+
+    teleprompter.addEventListener('touchend', () => {
+      clearTimeout(longPressTimer);
+    });
+
+    // ═══════════════════════════════════════════
+    // EVENT LISTENERS
+    // ═══════════════════════════════════════════
+    playBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePlay();
+    });
+
+    resetBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      reset();
+    });
+
+    mirrorBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.isMirrored = !state.isMirrored;
+      updateMirrorUI();
+      saveState();
+    });
+
+    mirrorToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.isMirrored = !state.isMirrored;
+      updateMirrorUI();
+      saveState();
+    });
+
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      pause();
+      openModal();
+    });
+
+    sizeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Cycle through preset sizes
+      const sizes = [36, 48, 60, 72];
+      const idx = sizes.indexOf(state.fontSize);
+      state.fontSize = sizes[(idx + 1) % sizes.length];
+      updateSizeUI();
+      saveState();
+    });
+
+    speedSlider.addEventListener('input', (e) => {
+      e.stopPropagation();
+      state.speed = parseInt(speedSlider.value);
+      updateSpeedUI();
+      saveState();
+      if (state.isPlaying) showSpeedIndicator();
+    });
+
+    sizeSlider.addEventListener('input', (e) => {
+      e.stopPropagation();
+      state.fontSize = parseInt(sizeSlider.value);
+      updateSizeUI();
+      saveState();
+    });
+
+    // Modal events
+    doneBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      applyScript();
+    });
+
+    cancelBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeModal();
+    });
+
+    scriptInput.addEventListener('input', updateCharCount);
+
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+
+    // Start button
+    startBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      welcomeState.classList.add('hidden');
+      openModal();
+    });
+
+    // Keyboard shortcuts (for external keyboard)
+    document.addEventListener('keydown', (e) => {
+      if (modalOverlay.classList.contains('active')) return;
+
+      switch(e.key) {
+        case ' ':
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          state.speed = Math.min(200, state.speed + 10);
+          updateSpeedUI();
+          saveState();
+          showSpeedIndicator();
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          state.speed = Math.max(20, state.speed - 10);
+          updateSpeedUI();
+          saveState();
+          showSpeedIndicator();
+          break;
+        case 'm':
+        case 'M':
+          state.isMirrored = !state.isMirrored;
+          updateMirrorUI();
+          saveState();
+          break;
+        case 'Escape':
+          if (state.isPlaying) pause();
+          showPanel();
+          break;
+      }
+    });
+
+    // ═══════════════════════════════════════════
+    // INIT
+    // ═══════════════════════════════════════════
+    updateSpeedUI();
+    updateSizeUI();
+    updateMirrorUI();
+    updateProgress();
+
+    // If already has script, show control panel
+    if (state.hasScript) {
+      welcomeState.classList.add('hidden');
+      controlPanel.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
